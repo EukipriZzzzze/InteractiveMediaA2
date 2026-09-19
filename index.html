@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="EN">
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <!--    Diacletia is my BEST friend. Thanks to him for providing the piano composition
+    he composed and performed himself, and granting permission to use it here!-->
+    <title>The Amazing Diacletia!</title>
+    <style>
+        /*Global base styles.*/
+        /*These rules keep the layout predictable and prevent sizing problems.*/
+        /*This page was not designed for portrait orientation.*/
+        /*The goal is for it to work as both a Music-listening Album UI and a Relaxation/study Background-music page.*/
+        /*That's why I remove the video section and replaced by a simply animate,
+        I don't want users to be distracted on the video.*/
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        /*Remove default margins and padding from every element.*/
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        /*Design tokens.*/
+        :root {
+            color-scheme: light;
+            --page: #8c8ea7;
+        }
+
+        /*The page is a full-viewport stage with no scrolling.*/
+        html, body, .page {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            overflow: hidden;
+            background: var(--page);
+        }
+
+        .page {
+            position: relative;
+            overflow: hidden;
+            background: var(--page);
+        }
+
+        /*The main visual idea is to use inline SVG artwork and exported PNG layers.*/
+        /*Most page elements were drawn as SVG first, then exported as PNG assets for simpler layering.*/
+        /*I am not very good at CSS animation, so some of the more complex parts were made with ChatGPT's help,*/
+        /*such as calculating animation coordinates. I reviewed and adjusted all of them in the final version.*/
+        .scene-image,
+        .controls-layer,
+        .usb {
+            position: absolute;
+            display: block;
+        }
+
+        .scene-image {
+            width: auto;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        /*Static album box/cover image.*/
+        .album-layer {
+            z-index: 1;
+            top: -53%;
+            right: 10vh;
+            height: 135%;
+            filter: drop-shadow(0 10px 10px rgb(40 39 57 / 30%));
+        }
+
+        /*Static control-panel base image.*/
+        .controls-layer {
+            z-index: 2;
+            right: 13vh;
+            bottom: 4%;
+            width: auto;
+            height: 43%;
+            overflow: visible;
+            filter: drop-shadow(0 7px 7px rgb(40 39 57 / 30%));
+        }
+
+        /*Static turntable body image.*/
+        .turntable-layer {
+            z-index: 3;
+            top: 7.5%;
+            height: 86%;
+            filter: drop-shadow(0 15px 15px rgb(40 39 57 / 30%));
+        }
+
+        /*Vinyl record layer.*/
+        /*It rotates continuously only while the page has the .is-playing class.*/
+        .record-layer {
+            z-index: 4;
+            top: 13%;
+            left: -15.6vh;
+            height: 75%;
+            transform-origin: 50% 50%;
+            animation: record-spin 12s linear infinite;
+            animation-play-state: paused;
+            filter: drop-shadow(15px 15px 15px rgb(40 39 57 / 30%));
+        }
+
+        /*Start the record animation when playback is active.*/
+        .page.is-playing .record-layer {
+            animation-play-state: running;
+        }
+
+        /*Tonearm layer.*/
+        /*The arm rotates down when playing and returns to the "off" position when stopped.*/
+        .tonearm-layer {
+            z-index: 5;
+            top: 15%;
+            left: 36vh;
+            height: 61%;
+            transform-origin: 83% 10%;
+            transition: transform 1.1s cubic-bezier(.45, 0, .25, 1);
+            filter: drop-shadow(0 5px 10px rgb(40 39 57 / 30%));
+        }
+
+        /*Applied when the tonearm is lifted away from the record.*/
+        .tonearm-layer.arm-off {
+            transform: rotate(-22deg);
+        }
+
+        /*USB drives are used as track selectors.*/
+        /*Changing records directly would be more complicated, but a plain list would feel less tactile.*/
+        /*This USB interaction is a compromise that keeps the experience physical.*/
+        /*And just ignore the logical question of "what does a USB drive have to do with a turntable?" plz.*/
+        .usb {
+            z-index: 6;
+            right: 14vh;
+            width: 23vh;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+            line-height: 0;
+            outline: none;
+            transition: transform .72s cubic-bezier(.22, .8, .25, 1), filter .2s ease;
+        }
+
+        .usb img {
+            display: block;
+            width: 100%;
+            height: auto;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .usb-red {
+            top: 27%;
+        }
+
+        .usb-blue {
+            top: 41%;
+        }
+
+        .usb-pink {
+            top: 55%;
+        }
+
+        .usb:hover,
+        .usb:focus-visible {
+            transform: scale(1.02);
+            filter: brightness(1.02) drop-shadow(5px 5px 5px rgb(40 39 57 / 20%));
+        }
+
+        /*Moves the selected USB drive into the slot.*/
+        .usb.is-inserted {
+            transform: translateX(6.4vh);
+        }
+
+        /*While a track is loading or changing, USB buttons are temporarily disabled.*/
+        .usb[aria-disabled="true"] {
+            cursor: wait;
+        }
+
+        /*USB slot overlay, placed above the USB drives. */
+        .usb-slot-layer {
+            z-index: 7;
+            top: 22%;
+            right: 0vh;
+            height: 49%;
+            filter: drop-shadow(0 7px 7px rgb(40 39 57 / 30%));
+        }
+
+        /*Playback controls. */
+        .controls-background {
+            pointer-events: none;
+        }
+
+        .control,
+        .bookmark {
+            cursor: pointer;
+            outline: none;
+        }
+
+        .control:hover .control-surface,
+        .control:focus-visible .control-surface {
+            filter: brightness(1.02);
+        }
+
+        /*Controls are disabled while an async transition is running.*/
+        .control[aria-disabled="true"] {
+            cursor: wait;
+            opacity: .85;
+        }
+
+        #pause-icon {
+            display: none;
+        }
+
+        /*Swap between play and pause icons according to playback state. */
+        .page.is-playing #play-icon {
+            display: none;
+        }
+
+        .page.is-playing #pause-icon {
+            display: inline;
+        }
+
+        /*Progress and volume controls. */
+        #progress-fill,
+        #volume-fill {
+            pointer-events: none;
+        }
+
+        #progress-hit,
+        #volume-hit,
+        .hit-area {
+            fill: transparent;
+            cursor: pointer;
+        }
+
+        #progress-hit,
+        #current-progress {
+            touch-action: none;
+        }
+
+        #progress-hit {
+            cursor: ew-resize;
+        }
+
+        #current-progress {
+            cursor: grab;
+            outline: none;
+        }
+
+        #current-progress.is-scrubbing {
+            cursor: grabbing;
+        }
+
+        #current-progress[aria-disabled="true"] {
+            cursor: not-allowed;
+        }
+
+        /*Bookmark marker styling and entry/exit animations.*/
+        .bookmark-art {
+            transform-box: fill-box;
+            transform-origin: center;
+            filter: drop-shadow(0 4px 3px rgb(35 24 21 / 18%));
+        }
+
+        .bookmark.is-entering .bookmark-art,
+        .bookmark.is-leaving .bookmark-art {
+            animation: bookmark-in .36s cubic-bezier(.2, .8, .2, 1) both;
+        }
+
+        .bookmark.is-leaving {
+            pointer-events: none;
+        }
+
+        .bookmark.is-leaving .bookmark-art {
+            animation-direction: reverse;
+        }
+
+        .bookmark-stem {
+            fill: #c9d3ee;
+            stroke: #f8f3f7;
+            stroke-miterlimit: 10;
+            stroke-width: 3px;
+        }
+
+        .bookmark-star {
+            fill: #fcf97b;
+        }
+
+        .bookmark-highlight {
+            fill: #fcfbe7;
+        }
+
+        /*Animation keyframes.*/
+        @keyframes record-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes bookmark-in {
+            from {
+                opacity: 0;
+                transform: translateY(-34px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+<main class="page" id="page">
+    <!--    Static album box/cover image. -->
+    <img alt="" aria-hidden="true" class="scene-image album-layer" draggable="false" src="images/专辑盒.png">
+
+    <!--    Control panel. -->
+    <svg class="controls-layer" role="group"
+         viewBox="940.32 1133.76 1106.64 460.32">
+        <image class="controls-background" height="470" href="images/控制板.png" preserveAspectRatio="none" width="1755"
+               x="291" y="1122"/>
+        <defs>
+            <!--            Clip path for the progress fill. -->
+            <clipPath id="progress-clip">
+                <rect height="12.87" rx="4.35" width="722.92" x="1227.11" y="1506.68"/>
+            </clipPath>
+            <!--            Clip path for the volume fill. -->
+            <clipPath id="volume-clip">
+                <rect height="109.79" rx="7.16" width="33.59" x="1984.72" y="1458.23"/>
+            </clipPath>
+        </defs>
+
+        <!--        Play / pause button. -->
+        <g aria-disabled="true" class="control" id="play-toggle" role="button" tabindex="0">
+            <g id="play-icon">
+                <path class="control-surface"
+                      d="M1142.19,1564.52c-28.34,0-51.39-23.05-51.39-51.39s23.05-51.39,51.39-51.39,51.39,23.05,51.39,51.39-23.06,51.39-51.39,51.39Z"
+                      fill="#c9d3ee"/>
+                <path d="M1142.2,1465.23c26.41,0,47.89,21.49,47.89,47.89s-21.49,47.89-47.89,47.89-47.89-21.49-47.89-47.89,21.49-47.89,47.89-47.89h0ZM1142.2,1458.23c-30.32,0-54.89,24.58-54.89,54.89s24.58,54.89,54.89,54.89,54.89-24.58,54.89-54.89-24.58-54.89-54.89-54.89h0Z"
+                      fill="#74a4c8"/>
+                <path d="M1123.94,1489.26v47.72c0,3.45,3.74,5.61,6.72,3.88l41.32-23.86c2.99-1.73,2.99-6.04,0-7.76l-41.32-23.86c-2.99-1.73-6.72.43-6.72,3.88Z"
+                      fill="#f8f3f7"/>
+            </g>
+            <g id="pause-icon">
+                <path class="control-surface"
+                      d="M1142.19,1564.52c-28.34,0-51.39-23.05-51.39-51.39s23.05-51.39,51.39-51.39,51.39,23.05,51.39,51.39-23.06,51.39-51.39,51.39Z"
+                      fill="#c9d3ee"/>
+                <path d="M1142.2,1465.23c26.41,0,47.89,21.49,47.89,47.89s-21.49,47.89-47.89,47.89-47.89-21.49-47.89-47.89,21.49-47.89,47.89-47.89h0ZM1142.2,1458.23c-30.32,0-54.89,24.58-54.89,54.89s24.58,54.89,54.89,54.89,54.89-24.58,54.89-54.89-24.58-54.89-54.89-54.89h0Z"
+                      fill="#74a4c8"/>
+                <rect fill="#f8f3f7" height="49.73" rx="5.29" width="17.66" x="1116.54" y="1488.26"/>
+                <rect fill="#f8f3f7" height="49.73" rx="5.29" width="17.66" x="1150.2" y="1488.26"/>
+            </g>
+        </g>
+
+        <!--        Progress bar. -->
+        <g id="progress">
+            <path d="M1246.76,1534.27c-11.66,0-21.15-9.49-21.15-21.15s9.49-21.15,21.15-21.15h683.62c11.66,0,21.15,9.49,21.15,21.15s-9.49,21.15-21.15,21.15h-683.62Z"
+                  fill="#45232b"/>
+            <path d="M1930.38,1493.47c10.85,0,19.65,8.8,19.65,19.65s-8.8,19.65-19.65,19.65h-683.62c-10.85,0-19.65-8.8-19.65-19.65s8.8-19.65,19.65-19.65h683.62ZM1930.38,1490.47h-683.62c-12.49,0-22.65,10.16-22.65,22.65s10.16,22.65,22.65,22.65h683.62c12.49,0,22.65-10.16,22.65-22.65s-10.16-22.65-22.65-22.65Z"
+                  fill="#f8f3f7"/>
+            <rect fill="#662d3e" height="12.87" rx="4.35" width="722.92" x="1227.11" y="1506.68"/>
+            <rect clip-path="url(#progress-clip)" fill="#b87a9a" height="12.87" id="progress-fill"
+                  width="0" x="1227.11" y="1506.68"/>
+            <rect aria-valuemax="100" aria-valuemin="0" aria-valuenow="0"
+                  height="55" id="progress-hit" role="slider" tabindex="0"
+                  width="722.92" x="1227.11" y="1485.62"/>
+        </g>
+
+        <!--        Volume slider. -->
+        <g id="vol">
+            <rect fill="#c9d3ee" height="109.79" id="volume-track" rx="7.16"
+                  width="33.59" x="1984.72" y="1458.23"/>
+            <rect clip-path="url(#volume-clip)" fill="#74a4c8" height="54.895" id="volume-fill"
+                  width="33.59" x="1984.72" y="1513.125"/>
+            <rect aria-valuemax="100" aria-valuemin="0" aria-valuenow="50"
+                  height="109.79" id="volume-hit" role="slider" tabindex="0"
+                  width="33.59" x="1984.72" y="1458.23"/>
+        </g>
+
+        <!--        Bookmark layer. Markers are rendered dynamically by JavaScript. -->
+        <!--        The website itself is a collection of Diacletia's music,
+        so I added a bookmark function as the supplement to Album context.-->
+        <g id="bookmarks"></g>
+
+        <!--        Draggable progress handle and "add bookmark" button. -->
+        <g aria-disabled="true" id="current-progress"
+           role="button" tabindex="0" transform="translate(-431.53 0)">
+            <path d="M1658.64,1502.35c-2.72,0-4.95-.73-5.01-1.65l-2.54-38.32c-.06-.95,2.2-1.72,5.01-1.72h5.08c2.81,0,5.07.78,5.01,1.72l-2.54,38.32c-.06.92-2.28,1.65-5.01,1.65Z"
+                  fill="#c9d3ee" stroke="#fff" stroke-linecap="round" stroke-miterlimit="10"
+                  stroke-width="3"/>
+            <path class="favorite-star"
+                  d="M1650.93,1440.28l-2.58-2.59-14.63,3.11c-1.39.3-1.94,1.98-.99,3.04l10.01,11.12c.35.39.52.91.46,1.43l-1.56,14.88c-.15,1.41,1.29,2.45,2.58,1.88l13.66-6.08c.48-.21,1.02-.21,1.5,0l13.66,6.08c1.3.58,2.73-.47,2.58-1.88l-1.56-14.88c-.05-.52.11-1.04.46-1.43l10.01-11.12c.95-1.05.4-2.74-.99-3.04l-14.63-3.11c-.51-.11-.95-.43-1.21-.88l-7.48-12.95c-.71-1.23-2.48-1.23-3.19,0l-7.48,12.95c-.26.45-.7.77-1.21.88Z"
+                  fill="#fcf97b"/>
+            <path d="M1666.82,1445.3l-1.28-12.14-5.31-9.19c-.71-1.23-2.48-1.23-3.19,0l-7.48,12.95c-.26.45-.7.77-1.21.88l-14.63,3.11c-1.39.3-1.94,1.98-.99,3.04l6.5,7.21,12.1,5.39c7.77,3.46,16.38-2.79,15.49-11.25Z"
+                  fill="#fcfbe7"/>
+            <rect fill="#c9d3ee" height="54.35" rx="5.95" stroke="#74a4c8"
+                  stroke-linecap="round" stroke-miterlimit="10" stroke-width="3"
+                  width="25.38" x="1645.95" y="1485.95"/>
+            <circle class="hit-area" cx="1658.64" cy="1463" r="38"/>
+        </g>
+    </svg>
+
+    <!--    Turntable body, record, and tonearm. -->
+    <img alt="" aria-hidden="true" class="scene-image turntable-layer" draggable="false" src="images/唱片机.png">
+    <img alt="" aria-hidden="true" class="scene-image record-layer" draggable="false" id="record" src="images/唱片.png">
+    <img alt="" aria-hidden="true" class="scene-image tonearm-layer arm-off" draggable="false"
+         id="tonearm" src="images/唱片针.png">
+
+    <!--    USB drives used as track selectors, plus the USB slot overlay. -->
+    <button class="usb usb-red"
+            data-track="0" type="button">
+        <img alt="" draggable="false" src="images/红U盘.png">
+    </button>
+    <button class="usb usb-blue"
+            data-track="1" type="button">
+        <img alt="" draggable="false" src="images/蓝U盘.png">
+    </button>
+    <button class="usb usb-pink"
+            data-track="2" type="button">
+        <img alt="" draggable="false" src="images/粉U盘.png">
+    </button>
+    <img alt="" aria-hidden="true" class="scene-image usb-slot-layer" draggable="false" src="images/U盘插槽.png">
+
+    <!--    Main audio element. Sources are attached dynamically by JavaScript. -->
+    <audio id="audio" preload="metadata"></audio>
+</main>
+</body>
+
+<!--I must admit that I am not good at JavaScript, so a fair amount of the code below was implemented with ChatGPT's help.
+I provided the logic.-->
+<!--I have reviewed every method below and understand how they work; I just find them difficult to memorize.-->
+<!--I redesigned most of the scripts to meet the new requirements, such as the animation playback sequence.-->
+<!--It was tough, I went through numerous iterations before arriving at this result.-->
+<!--Some portions of code written by ChatGPT serve no essential purpose, but I kept them because I found them interesting.-->
+<script>
+    // Audio player controller.
+    // This IIFE encapsulates all playback, track loading, progress, volume, bookmark,
+    // USB selection, and turntable/tonearm animation logic.
+    (() => {
+        // Human-readable local track identifiers.
+        // Local files are expected to live under music/ with one of the supported extensions.
+        const tracks = ['1', '2', '3'];
+
+        // Remote fallback URLs.
+        // Two loading paths are supported: local files first, then a remote fallback.
+        // Multiple audio formats are tried to maximize browser compatibility.
+
+        // The third remote track intentionally points to a broken URL for testing.
+        // Change 114514 to 3 to make it playable.
+        const remoteTracks = [
+            'https://file.garden/aq5WZt54Rv_YhIL2/1.m4a',
+            'https://file.garden/aq5WZt54Rv_YhIL2/2.m4a',
+            'https://file.garden/aq5WZt54Rv_YhIL2/114514.m4a'
+        ];
+
+        // Audio formats tried for each local track, in order.
+        // Each entry contains [file extension, MIME type].
+        const audioFormats = [
+            ['mp3', 'audio/mpeg'],
+            ['m4a', 'audio/mp4'],
+            ['wav', 'audio/wav'],
+            ['ogg', 'audio/ogg'],
+            ['opus', 'audio/ogg; codecs=opus'],
+            ['flac', 'audio/flac'],
+            ['aac', 'audio/aac'],
+            ['webm', 'audio/webm']
+        ];
+
+        // Maximum time to wait for playback/source readiness before treating it as a failure.
+        // The value is in milliseconds.
+        const audioLoadTimeout = 11451.4;
+
+        // These seemingly odd numbers are SVG coordinate constants derived from the design artwork.
+        // They align DOM overlays and dynamic SVG elements with the control panel viewBox.
+        const progressStart = 1227;
+        const progressWidth = 720;
+        const progressHandleOrigin = 431;
+        const bookmarkTemplateX = 1314;
+        const volumeTop = 1458;
+        const volumeHeight = 110;
+
+        // Cached DOM references.
+        // Caching these elements avoids repeated querySelector calls during playback.
+        const page = document.querySelector('#page');
+        const audio = document.querySelector('#audio');
+        const tonearm = document.querySelector('#tonearm');
+        const playToggle = document.querySelector('#play-toggle');
+        const usbs = [...document.querySelectorAll('.usb')];
+        const progressHit = document.querySelector('#progress-hit');
+        const progressFill = document.querySelector('#progress-fill');
+        const currentProgress = document.querySelector('#current-progress');
+        const bookmarkLayer = document.querySelector('#bookmarks');
+        const volumeTrack = document.querySelector('#volume-track');
+        const volumeHit = document.querySelector('#volume-hit');
+        const volumeFill = document.querySelector('#volume-fill');
+
+        // Bookmark data.
+        const bookmarks = tracks.map(() => []);
+
+        // Mutable player state.
+        let selectedTrack = -1;
+        let busy = false;
+        let scrubber = null;
+        let scrubStartX = 0;
+        let scrubOffsetX = 0;
+        let scrubMoved = false;
+        let suppressFavoriteClickUntil = 0;
+
+        // Resolves when every candidate source for the current track has failed.
+        // It starts as a never-resolving promise so normal playback is not blocked.
+        let sourcesFailed = new Promise(() => {
+        });
+
+        // Wait for CSS transitions/animations to finish.
+        // This keeps JavaScript state changes synchronized with visual animations.
+        const waitForCss = async elements => {
+            await new Promise(requestAnimationFrame);
+            const animations = elements.flatMap(element => element.getAnimations({subtree: true}));
+            await Promise.all(animations.map(animation => animation.finished.catch(() => {
+            })));
+        };
+
+        // Move the tonearm down (playing) or up (stopped).
+        const moveArm = async down => {
+            tonearm.classList.toggle('arm-off', !down);
+            await waitForCss([tonearm]);
+        };
+
+        // Lock or unlock UI controls while an async transition is running.
+        // This prevents repeated clicks from triggering overlapping animations.
+        const setBusy = value => {
+            busy = value;
+            playToggle.setAttribute('aria-disabled', String(value || selectedTrack < 0));
+            usbs.forEach(usb => usb.setAttribute('aria-disabled', String(value)));
+        };
+
+        // Load a track by building multiple local <source> elements and one remote fallback.
+        // The browser chooses the first source it can decode.
+        const loadTrack = (track, remoteTrack) => {
+            const sources = audioFormats.map(([extension, type]) => {
+                const source = document.createElement('source');
+                source.src = `music/${track}.${extension}`;
+                source.type = type;
+                return source;
+            });
+
+            // Final fallback source, always appended after all local format attempts.
+            const fallback = document.createElement('source');
+            fallback.src = remoteTrack;
+            fallback.type = 'audio/mp4';
+            sources.push(fallback);
+
+            // Resolve only after every candidate source has fired an error.
+            sourcesFailed = new Promise(resolve => {
+                let failures = 0;
+                sources.forEach(source => source.addEventListener('error', () => {
+                    failures += 1;
+                    if (failures === sources.length) resolve();
+                }, {once: true}));
+            });
+
+            // Clear any previous source list and begin loading the new one.
+            audio.removeAttribute('src');
+            audio.replaceChildren(...sources);
+            audio.load();
+        };
+
+        // Try to start playback, but race it against source failure and a timeout.
+        // This avoids waiting forever if the media cannot load.
+        const tryPlay = async () => {
+            let timer;
+            try {
+                const played = await Promise.race([
+                    audio.play().then(() => true, () => false),
+                    sourcesFailed.then(() => false),
+                    new Promise(resolve => {
+                        timer = setTimeout(() => resolve(false), audioLoadTimeout);
+                    })
+                ]);
+                if (!played) audio.pause();
+                return played;
+            } catch {
+                audio.pause();
+                return false;
+            } finally {
+                clearTimeout(timer);
+            }
+        };
+
+        // Prime audio playback.
+        // Some browsers require a user gesture before audible playback.
+        // This briefly plays muted audio, pauses it, restores the previous time, then unmutes.
+        const primeAudio = async () => {
+            const position = audio.currentTime;
+            audio.muted = true;
+            try {
+                if (!await tryPlay()) return false;
+                audio.pause();
+                audio.currentTime = position;
+            } finally {
+                audio.muted = false;
+            }
+            return true;
+        };
+
+        // Toggle the visual playing state.
+        // This class controls the record-spin animation and play/pause icons.
+        const setPlaying = value => {
+            page.classList.toggle('is-playing', value);
+        };
+
+        // Start playback and lower the tonearm.
+        const startPlayback = async () => {
+            await moveArm(true);
+            if (await tryPlay()) {
+                setPlaying(true);
+                return true;
+            }
+            return false;
+        };
+
+        // Stop playback and lift the tonearm.
+        const stopPlayback = async () => {
+            audio.pause();
+            setPlaying(false);
+            await moveArm(false);
+        };
+
+        // Eject the currently selected track.
+        // This animates the USB drive out, stops playback, clears the audio element,
+        // and refreshes progress/bookmark rendering without deleting stored bookmarks.
+        const ejectTrack = async index => {
+            usbs[index].classList.remove('is-inserted');
+            await waitForCss([usbs[index]]);
+
+            await stopPlayback();
+
+            selectedTrack = -1;
+            audio.replaceChildren();
+            audio.removeAttribute('src');
+            audio.load();
+            renderProgress();
+            renderBookmarks();
+        };
+
+        // Toggle play/pause for the selected track.
+        // If the audio has ended, restart from the beginning.
+        const togglePlayback = async () => {
+            if (busy || selectedTrack < 0)
+                return;
+
+            setBusy(true);
+            if (audio.paused || audio.ended) {
+                if (audio.ended) audio.currentTime = 0;
+                const primed = await primeAudio();
+                if (!primed || !await startPlayback()) await ejectTrack(selectedTrack);
+            } else {
+                await stopPlayback();
+            }
+            setBusy(false);
+        };
+
+        // Select a track by USB index.
+        // Clicking the already selected USB ejects it.
+        // Selecting a new USB pauses the previous track, animates the USB in,
+        // loads the new track, primes audio, and starts playback if possible.
+        const selectTrack = async index => {
+            if (busy) return;
+
+            if (index === selectedTrack) {
+                setBusy(true);
+                await ejectTrack(index);
+                setBusy(false);
+                return;
+            }
+
+            setBusy(true);
+            audio.pause();
+            setPlaying(false);
+
+            const armMove = moveArm(false);
+            usbs.forEach((usb, usbIndex) => usb.classList.toggle('is-inserted', usbIndex === index));
+            const usbMove = waitForCss(usbs);
+
+            selectedTrack = index;
+            loadTrack(tracks[index], remoteTracks[index]);
+            const primed = primeAudio();
+            renderProgress();
+            renderBookmarks();
+
+            const [, , canPlay] = await Promise.all([armMove, usbMove, primed]);
+            if (!canPlay || !await startPlayback()) await ejectTrack(index);
+            setBusy(false);
+        };
+
+        // Render the progress fill and draggable progress handle.
+        // Also updates ARIA values for accessibility.
+        const renderProgress = () => {
+            const ratio = Number.isFinite(audio.duration) ? audio.currentTime / audio.duration : 0;
+            const distance = Math.max(0, Math.min(1, ratio)) * progressWidth;
+            progressFill.setAttribute('width', distance);
+            currentProgress.setAttribute('transform', `translate(${distance - progressHandleOrigin} 0)`);
+            currentProgress.setAttribute('aria-disabled', String(!Number.isFinite(audio.duration)));
+            progressHit.setAttribute('aria-valuenow', String(Math.round(ratio * 100) || 0));
+        };
+
+        // Seek to a ratio between 0 and 1.
+        const seekTo = ratio => {
+            if (!Number.isFinite(audio.duration)) return;
+            audio.currentTime = Math.max(0, Math.min(1, ratio)) * audio.duration;
+            renderProgress();
+        };
+
+        // Convert a pointer position into a seek ratio
+        const seekFromPointer = (event, offsetX = 0) => {
+            const bounds = progressHit.getBoundingClientRect();
+            seekTo((event.clientX + offsetX - bounds.left) / bounds.width);
+        };
+
+        // Begin scrubbing the progress bar or the draggable progress handle.
+        const beginScrub = event => {
+            if (event.button !== 0 || !Number.isFinite(audio.duration)) return;
+            event.preventDefault();
+            scrubber = event.currentTarget;
+            scrubStartX = event.clientX;
+            if (scrubber === currentProgress) {
+                const handleBounds = currentProgress.getBoundingClientRect();
+                scrubOffsetX = handleBounds.left + handleBounds.width / 2 - event.clientX;
+            } else {
+                scrubOffsetX = 0;
+            }
+            scrubMoved = false;
+            scrubber.setPointerCapture(event.pointerId);
+            currentProgress.classList.add('is-scrubbing');
+            seekFromPointer(event, scrubOffsetX);
+        };
+
+        // Update scrubbing while the pointer moves.
+        const updateScrub = event => {
+            if (event.currentTarget !== scrubber) return;
+            event.preventDefault();
+            if (Math.abs(event.clientX - scrubStartX) > 3) scrubMoved = true;
+            seekFromPointer(event, scrubOffsetX);
+        };
+
+        // End scrubbing and release pointer capture.
+        // If the progress handle was dragged, suppress the following click so it does not accidentally add a bookmark.
+        const endScrub = event => {
+            if (event.currentTarget !== scrubber) return;
+            if (scrubber === currentProgress && scrubMoved) {
+                suppressFavoriteClickUntil = performance.now() + 100;
+            }
+            if (scrubber.hasPointerCapture(event.pointerId)) {
+                scrubber.releasePointerCapture(event.pointerId);
+            }
+            currentProgress.classList.remove('is-scrubbing');
+            scrubber = null;
+            scrubOffsetX = 0;
+        };
+
+        // Render bookmark markers for the selected track.
+        // Each bookmark is positioned along the progress bar according to its timestamp.
+        const renderBookmarks = (animatedTime = null) => {
+            bookmarkLayer.replaceChildren();
+            if (selectedTrack < 0 || !Number.isFinite(audio.duration))
+                return;
+
+            let insertedMarkerAnimated = false;
+            bookmarks[selectedTrack].forEach(time => {
+                const x = progressStart + time / audio.duration * progressWidth;
+                const marker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                marker.classList.add('bookmark');
+                if (!insertedMarkerAnimated && time === animatedTime) {
+                    marker.classList.add('is-entering');
+                    insertedMarkerAnimated = true;
+                }
+                marker.setAttribute('transform', `translate(${x - bookmarkTemplateX} 0)`);
+                marker.setAttribute('role', 'button');
+                marker.setAttribute('tabindex', '0');
+                marker.innerHTML = `
+                    <g class="bookmark-art">
+                        <path class="bookmark-stem" d="M1314.73,1515.42c-2.72,0-4.95-2.17-5.01-4.9l-2.54-113.8c-.06-2.81,2.2-5.12,5.01-5.12h5.08c2.81,0,5.07,2.31,5.01,5.12l-2.54,113.8c-.06,2.72-2.28,4.9-5.01,4.9Z"/>
+                        <path class="bookmark-star" d="M1307.02,1368.66l-2.58-2.6-14.63,3.11c-1.39.3-1.94,1.98-.99,3.04l10.01,11.12c.35.39.52.91.46,1.43l-1.56,14.88c-.15,1.41,1.29,2.45,2.58,1.88l13.66-6.08c.48-.21,1.02-.21,1.5,0l13.66,6.08c1.3.58,2.73-.47,2.58-1.88l-1.56-14.88c-.05-.52.11-1.04.46-1.43l10.01-11.12c.95-1.05.4-2.74-.99-3.04l-14.63-3.11c-.51-.11-.95-.43-1.21-.88l-7.48-12.95c-.71-1.23-2.48-1.23-3.19,0l-7.48,12.95c-.26.45-.7.77-1.21.88Z"/>
+                        <path class="bookmark-highlight" d="M1322.91,1373.67l-1.28-12.14-5.31-9.19c-.71-1.23-2.48-1.23-3.19,0l-7.48,12.95c-.26.45-.7.77-1.21.88l-14.63,3.11c-1.39.3-1.94,1.98-.99,3.04l6.5,7.21,12.1,5.39c7.77,3.46,16.38-2.79,15.49-11.25Z"/>
+                    </g>
+                    <circle class="hit-area" cx="1314.73" cy="1382" r="36"/>
+                `;
+
+                // Activate a bookmark.
+                // If the playhead is already exactly at the bookmark time, this removes the bookmark.
+                // Otherwise, it seeks to the bookmark time.
+                const useBookmark = async () => {
+                    if (marker.classList.contains('is-leaving'))
+                        return;
+                    if (audio.currentTime === time) {
+                        const trackIndex = selectedTrack;
+                        marker.classList.remove('is-entering');
+                        void marker.getBoundingClientRect();
+                        marker.classList.add('is-leaving');
+                        marker.setAttribute('aria-disabled', 'true');
+                        await waitForCss([marker]);
+                        const index = bookmarks[trackIndex].indexOf(time);
+                        if (index >= 0) bookmarks[trackIndex].splice(index, 1);
+                        if (selectedTrack === trackIndex) renderBookmarks();
+                        return;
+                    }
+                    audio.currentTime = time;
+                    renderProgress();
+                };
+
+                marker.addEventListener('click', useBookmark);
+                marker.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        useBookmark();
+                    }
+                });
+                bookmarkLayer.append(marker);
+            });
+        };
+
+        // Add a bookmark at the current playback time.
+        // Ignores clicks immediately after dragging the progress handle.
+        const addBookmark = () => {
+            if (performance.now() < suppressFavoriteClickUntil)
+                return;
+            if (selectedTrack < 0 || !Number.isFinite(audio.duration))
+                return;
+            const time = audio.currentTime;
+            bookmarks[selectedTrack].push(time);
+            bookmarks[selectedTrack].sort((a, b) => a - b);
+            renderBookmarks(time);
+        };
+
+        // Set the audio volume and update the volume fill.
+        const setVolume = value => {
+            audio.volume = Math.max(0, Math.min(1, value));
+            const height = audio.volume * volumeHeight;
+            volumeFill.setAttribute('y', volumeTop + volumeHeight - height);
+            volumeFill.setAttribute('height', height);
+            volumeHit.setAttribute('aria-valuenow', String(Math.round(audio.volume * 100)));
+        };
+
+        // Convert a pointer position on the volume track into a volume value.
+        const volumeFromPointer = event => {
+            const bounds = volumeTrack.getBoundingClientRect();
+            setVolume(1 - (event.clientY - bounds.top) / bounds.height);
+        };
+
+        // Bind both click and keyboard activation to an element.
+        const activate = (element, action) => {
+            element.addEventListener('click', action);
+            element.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    action();
+                }
+            });
+        };
+
+        // Play/pause, bookmark, and USB button activation.
+        activate(playToggle, togglePlayback);
+        activate(currentProgress, addBookmark);
+        usbs.forEach((usb, index) => activate(usb, () => selectTrack(index)));
+
+        // Progress scrubbing events.
+        [progressHit, currentProgress].forEach(element => {
+            element.addEventListener('pointerdown', beginScrub);
+            element.addEventListener('pointermove', updateScrub);
+            element.addEventListener('pointerup', endScrub);
+            element.addEventListener('pointercancel', endScrub);
+        });
+
+        // Volume click event.
+        volumeHit.addEventListener('click', volumeFromPointer);
+
+        // Audio lifecycle listeners.
+        audio.addEventListener('timeupdate', renderProgress);
+        audio.addEventListener('loadedmetadata', () => {
+            renderProgress();
+            renderBookmarks();
+        });
+        audio.addEventListener('ended', async () => {
+            setPlaying(false);
+            setBusy(true);
+            await moveArm(false);
+            setBusy(false);
+        });
+
+        // Initial state.
+        setVolume(.5);
+        renderProgress();
+        setBusy(false);
+    })();
+</script>
+</html>
